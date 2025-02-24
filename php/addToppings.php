@@ -1,14 +1,43 @@
 <?php
 session_start();
 
+require 'vendor/autoload.php'; // Include AWS SDK for PHP
+
+use Aws\SecretsManager\SecretsManagerClient;
+use Aws\Exception\AwsException;
+
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-$servername = 'csicg4.czptxhzjxjrt.us-east-1.rds.amazonaws.com';
-$username = 'group4';
-$password = 'Groupfour';
-$dbname = 'ice_shop';
+// Function to retrieve database credentials from AWS Secrets Manager
+function getDatabaseCredentials() {
+    $client = new SecretsManagerClient([
+        'region' => 'us-east-1', // Update with your AWS region
+        'version' => 'latest'
+    ]);
+
+    try {
+        $result = $client->getSecretValue([
+            'SecretId' => 'ice_shop_db_credentials' // Replace with your secret name
+        ]);
+
+        if (isset($result['SecretString'])) {
+            return json_decode($result['SecretString'], true);
+        } else {
+            throw new Exception("SecretString not found.");
+        }
+    } catch (AwsException $e) {
+        die("Error retrieving secrets: " . $e->getMessage());
+    }
+}
+
+$credentials = getDatabaseCredentials();
+
+$servername = $credentials['servername'];
+$username = $credentials['username'];
+$password = $credentials['password'];
+$dbname = $credentials['dbname'];
 
 function getDatabaseConnection() {
     global $servername, $username, $password, $dbname;
@@ -26,18 +55,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['addTopping'])) {
         $toppingName = $_POST['toppingName'];
         $toppingPrice = $_POST['toppingPrice'];
-        
+
         $query = "INSERT INTO toppings (topping_name, price) VALUES (?, ?)";
         $stmt = $conn->prepare($query);
         $stmt->bind_param("sd", $toppingName, $toppingPrice);
         $stmt->execute();
     }
-    
+
     if (isset($_POST['updateTopping'])) {
         $toppingId = $_POST['toppingId'];
         $toppingName = $_POST['toppingName'];
         $toppingPrice = $_POST['toppingPrice'];
-        
+
         $query = "UPDATE toppings SET topping_name=?, price=? WHERE topping_id=?";
         $stmt = $conn->prepare($query);
         $stmt->bind_param("sdi", $toppingName, $toppingPrice, $toppingId);
@@ -46,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     if (isset($_POST['deleteTopping'])) {
         $toppingId = $_POST['toppingId'];
-        
+
         $query = "DELETE FROM toppings WHERE topping_id=?";
         $stmt = $conn->prepare($query);
         $stmt->bind_param("i", $toppingId);
